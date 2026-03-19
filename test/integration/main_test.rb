@@ -6,9 +6,10 @@ class MainTest < IntegrationTest
 
     assert_app_is_down
 
-    kamal :deploy
+    deploy_output = kamal :deploy, capture: true
     assert_app_is_up version: first_version
     assert_hooks_ran "pre-connect", "pre-build", "pre-deploy", "pre-app-boot", "post-app-boot", "post-deploy"
+    assert_hook_output deploy_output
 
     assert_envs version: first_version
 
@@ -96,6 +97,19 @@ class MainTest < IntegrationTest
 
     output = kamal :uname_quiet, "-o", capture: true
     assert_match "GNU/Linux", output
+  end
+
+  test "deploy with destinations" do
+    @app = "app_with_destinations"
+
+    kamal :staging_deploy
+    assert_app_is_up
+
+    config = YAML.load(kamal(:staging_config, capture: true))
+    assert_equal [ "vm1" ], config[:hosts]
+
+    config = YAML.load(kamal(:production_config, capture: true))
+    assert_equal [ "vm2", "vm3" ], config[:hosts]
   end
 
   test "setup and remove" do
@@ -229,5 +243,17 @@ class MainTest < IntegrationTest
       assert_match /KAMAL_RECORDED_AT=\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ/, output
       assert_match "KAMAL_HOSTS=vm1,vm2", output
       assert_match "KAMAL_ROLES=web", output
+    end
+
+    def assert_hook_output(output)
+      # pre-deploy hook (hooks_output: :verbose) shows everything
+      assert_match(/Running.*pre-deploy/, output)
+      assert_match(/Deployed!/, output)
+      # pre-build hook (hooks_output: :quiet) hides everything
+      assert_no_match(/Running.*pre-build/, output)
+      assert_no_match(/About to build and push/, output)
+      # post-deploy hook (no hooks_output setting) shows Running but hides output
+      assert_match(/Running.*post-deploy/, output)
+      assert_no_match(/Finished deploy!/, output)
     end
 end
